@@ -78,15 +78,17 @@ def extract_data(filepath):
                 if pd.notna(heat) and pd.notna(power) and power != 0:  # 这里防止除以0
                     # =====================================================
                     # 【核心修正】：COP = 热量 / 功率 (之前写反了！)
-                    y = heat / power
+                    y = heat/power
                     # =====================================================
                     records.append([float(et), float(ot), float(y)])
 
     return {"data": records}
 
 R_2_1 = 0
+R_2_2=0
 R_2_ln = 0
 R_2_sqrt = 0
+R_1_2 = 0
 R_1_1 = 0
 R_1_ln = 0
 R_1_sqrt = 0
@@ -96,6 +98,8 @@ True_results_2_sqrt = []
 True_results_1_1 = []
 True_results_1_ln = []
 True_results_1_sqrt = []
+True_results_1_2=[]
+True_results_2_2=[]
 # ---------------------- 主程序 ----------------------
 if __name__ == "__main__":
     file = "data.xlsx"
@@ -125,7 +129,7 @@ if __name__ == "__main__":
             for third in range(second + 1, 41):
                 # 第四层循环：第四个数 d，必须比 c 大
                 for fourth in range(third + 1, 42):
-                    for i in range(3):
+                    for i in range(4):
                         if i == 0:
 
                             #len_x中，第一位环境温度，第二位出水温度，第三位COP
@@ -219,6 +223,38 @@ if __name__ == "__main__":
                                 if float(1 - SSres / SStot) > float(R_2_ln):
                                     R_2_ln = float(1 - SSres / SStot)
                                     True_results_2_ln = [a, b, c, d]
+                                else:
+                                    continue
+                            except:
+                                pass
+                        elif i == 3:
+                            # len_x中，第一位环境温度，第二位出水温度，第三位COP
+                            len_1 = result[first]
+                            len_2 = result[second]
+                            len_3 = result[third]
+                            len_4 = result[fourth]
+                            left = np.array([
+                                [len_1[0] , len_1[1]**2, len_1[1], 1],
+                                [len_2[0] , len_2[1]**2, len_2[1], 1],
+                                [len_3[0] , len_3[1]**2, len_3[1], 1],
+                                [len_4[0] , len_4[1]**2, len_4[1], 1]])
+                            right = np.array([len_1[2], len_2[2], len_3[2], len_4[2]])
+
+                            try:
+                                a, b, c, d = np.linalg.solve(left, right)
+
+                                SSres = 0
+                                SStot = 0
+                                for compute in result:
+                                    true_cop = compute[2]
+                                    T_env = compute[0]
+                                    T_out = compute[1]
+                                    compute_cop = a * (T_env) + b *( T_out**2 )+ c * T_out + d
+                                    SSres = SSres + (true_cop - compute_cop) ** 2
+                                    SStot = SStot + (true_cop - average_cop) ** 2
+                                if float(1 - SSres / SStot) > float(R_1_2):
+                                    R_1_2 = float(1 - SSres / SStot)
+                                    True_results_1_2 = [a, b, c, d]
                                 else:
                                     continue
                             except:
@@ -319,71 +355,99 @@ if __name__ == "__main__":
                                 continue
                         except:
                             pass
+    print("第二组大推演完成，准备第三组双非线性推导")
+    # 五层循环：通过"后数 > 前数"保证组合唯一且无序
+    for first in tqdm(range(0, 38)):  # 第1个数：最大只能到37（留4个数给后面）
+        for second in range(first + 1, 39):  # 第2个数：从a+1开始，最大到38
+            for third in range(second + 1, 40):  # 第3个数：从b+1开始，最大到39
+                for fourth in range(third + 1, 41):  # 第4个数：从c+1开始，最大到40
+                    for fifth in range(fourth + 1, 42):  # 第5个数：从d+1开始，最大到41
+                        len_1 = result[first]
+                        len_2 = result[second]
+                        len_3 = result[third]
+                        len_4 = result[fourth]
+                        len_5 = result[fifth]
+                        left = np.array([
+                            [len_1[0] ** 2, len_1[0], len_1[1]**2,len_1[1],1],
+                            [len_2[0] ** 2, len_2[0], len_2[1]**2,len_2[1],1],
+                            [len_3[0] ** 2, len_3[0], len_3[1]**2,len_3[1],1],
+                            [len_4[0] ** 2, len_4[0], len_4[1]**2,len_4[1],1],
+                            [len_5[0] ** 2, len_5[0], len_5[1]**2,len_5[1],1]
+                        ])
+                        right = np.array([len_1[2], len_2[2], len_3[2], len_4[2],len_5[2]])
 
+                        try:
+                            a, b, c, d,e = np.linalg.solve(left, right)
 
+                            SSres = 0
+                            SStot = 0
+                            for compute in result:
+                                true_cop = compute[2]
+                                T_env = compute[0]
+                                T_out = compute[1]
+                                compute_cop = a * (T_env ** 2) + b * T_env + c * (T_out**2 )+ d*T_out+e
+                                SSres = SSres + (true_cop - compute_cop) ** 2
+                                SStot = SStot + (true_cop - average_cop) ** 2
+                            if float(1 - SSres / SStot) > float(R_2_2):
+                                R_2_2 = float(1 - SSres / SStot)
+                                True_results_2_2 = [a, b, c, d,e]
+                            else:
+                                continue
+                        except:
+                            pass
+    m = [R_2_1,R_2_2,R_2_ln,R_2_sqrt,R_1_2,R_1_1,R_1_ln,R_1_sqrt]
+    result_list = ["R_2_1","R_2_2","R_2_ln","R_2_sqrt","R_1_2","R_1_1","R_1_ln","R_1_sqrt"]
+    for i in range(8):
+        if m[i]==max(m):
+            print(result_list[i]+"R²="+str(m[i]))
+    print("R_2_2:R²"+str(R_2_2))
+    print("R_1_2:R²" + str(R_1_2))
 
+    # ========== 输出所有模型的最大R² ==========
+    print("\n" + "=" * 60)
+    print("各模型的最大 R² 值：")
+    print("=" * 60)
+    print(f"【二次线性】     Q = a·T_env² + b·T_env + c·T_out + d                 → R² = {R_2_1:.6f}")
+    print(f"【二次平方根】   Q = a·T_env² + b·T_env + c·√T_out + d                → R² = {R_2_sqrt:.6f}")
+    print(f"【二次对数】     Q = a·T_env² + b·T_env + c·ln(T_out) + d             → R² = {R_2_ln:.6f}")
+    print(f"【一次+T_out²】  Q = a·T_env + b·T_out² + c·T_out + d                 → R² = {R_1_2:.6f}")
+    print(f"【一次线性】     Q = a·T_env + b·T_out + c                            → R² = {R_1_1:.6f}")
+    print(f"【一次平方根】   Q = a·T_env + b·√T_out + c                           → R² = {R_1_sqrt:.6f}")
+    print(f"【一次对数】     Q = a·T_env + b·ln(T_out) + c                        → R² = {R_1_ln:.6f}")
+    print(f"【双二次】       Q = a·T_env² + b·T_env + c·T_out² + d·T_out + e      → R² = {R_2_2:.6f}")
 
-    #print("COP=T_env²*"+str(True_results[0])+"T_env*"+str(True_results[1])+"T_out*"+str(True_results[2])+"+"+str(True_results[3]))
-    def compute(T_env, T_out):
-        true_cop1 = (T_env**2)*True_results[0]+T_env*True_results[1]+T_out*True_results[2]+True_results[3]
-        print(true_cop1)
-    m = max([R_2_1,R_2_sqrt,R_1_1,R_1_sqrt,R_1_ln])
-    if m == R_2_ln:
-        print("2_ln"+" R²:"+str(R_2_ln))
-    if m == R_2_1:
-        print("2_1"+" R²:"+str(R_2_1))
-    if m == R_2_sqrt:
-        print("2_sqrt"+" R²:"+str(R_2_sqrt))
-    if m == R_1_ln:
-        print("1_ln"+" R²:"+str(R_1_ln))
-    if m == R_1_1:
-        print("1_1"+" R²:"+str(R_1_1))
-    if m == R_1_sqrt:
-        print("1_sqrt"+" R²:"+str(R_1_sqrt))
-    models = ['2_1', '2_sqrt', '2_ln', '1_1', '1_sqrt', '1_ln']
-    r2_values = [R_2_1, R_2_sqrt, R_2_ln, R_1_1, R_1_sqrt, R_1_ln]
-    best_idx = np.argmax(r2_values)
-    print(f"最佳模型：{models[best_idx]}，R² = {r2_values[best_idx]}")
-    print(
-        f"对应系数：{[True_results_2_1, True_results_2_sqrt, True_results_2_ln, True_results_1_1, True_results_1_sqrt, True_results_1_ln][best_idx]}")
-    print(f"【二次线性】   COP = a·T_env² + b·T_env + c·T_out + d       → R² = {R_2_1}")
-    print(f"【二次平方根】 COP = a·T_env² + b·T_env + c·√T_out + d      → R² = {R_2_sqrt}")
-    print(f"【二次对数】   COP = a·T_env² + b·T_env + c·ln(T_out) + d   → R² = {R_2_ln}")
-    print(f"【一次线性】   COP = a·T_env + b·T_out + c                  → R² = {R_1_1}")
-    print(f"【一次平方根】 COP = a·T_env + b·√T_out + c                 → R² = {R_1_sqrt}")
-    print(f"【一次对数】   COP = a·T_env + b·ln(T_out) + c              → R² = {R_1_ln}")
-
-    models_info = [
-        ("二次线性   COP = a·T_env² + b·T_env + c·T_out + d", R_2_1, True_results_2_1, 4),
-        ("二次平方根 COP = a·T_env² + b·T_env + c·√T_out + d", R_2_sqrt, True_results_2_sqrt, 4),
-        ("二次对数   COP = a·T_env² + b·T_env + c·ln(T_out) + d", R_2_ln, True_results_2_ln, 4),
-        ("一次线性   COP = a·T_env + b·T_out + c", R_1_1, True_results_1_1, 3),
-        ("一次平方根 COP = a·T_env + b·√T_out + c", R_1_sqrt, True_results_1_sqrt, 3),
-        ("一次对数   COP = a·T_env + b·ln(T_out) + c", R_1_ln, True_results_1_ln, 3)
+    # ========== 找出最佳模型 ==========
+    models = [
+        ("二次线性", R_2_1, True_results_2_1, 4),
+        ("二次平方根", R_2_sqrt, True_results_2_sqrt, 4),
+        ("二次对数", R_2_ln, True_results_2_ln, 4),
+        ("一次+T_out²", R_1_2, True_results_1_2, 4),
+        ("一次线性", R_1_1, True_results_1_1, 3),
+        ("一次平方根", R_1_sqrt, True_results_1_sqrt, 3),
+        ("一次对数", R_1_ln, True_results_1_ln, 3),
+        ("双二次", R_2_2, True_results_2_2, 5)
     ]
 
-    # 找出 R² 最大的模型（忽略可能的负无穷）
-    best_model = max(models_info, key=lambda x: x[1])
-    name, r2, coeff, n_coeff = best_model
+    best = max(models, key=lambda x: x[1])
+    name, r2, coeff, n_params = best
 
-    # 根据系数个数格式化输出
-    if n_coeff == 4:
-        a, b, c, d = coeff
-        print(f"最佳模型：{name}")
-        print(f"系数：a = {a:.8f}, b = {b:.4f}, c = {c:.4f}, d = {d:.4f}")
-        print(f"具体公式：COP = {a:.8f}·T_env² + {b:.4f}·T_env + {c:.4f}·T_out + {d:.4f}")
-    elif n_coeff == 3:
-        a, b, c = coeff
-        print(f"最佳模型：{name}")
-        print(f"系数：a = {a:.4f}, b = {b:.4f}, c = {c:.4f}")
-        print(f"具体公式：COP = {a:.4f}·T_env + {b:.4f}·T_out + {c:.4f}")
-
-    print(f"对应 R² = {r2:.4f}")
+    print("\n" + "=" * 60)
+    print("🏆 最佳模型")
     print("=" * 60)
+    print(f"模型：{name}")
+    print(f"R² = {r2:.6f}")
 
+    if n_params == 5:
+        a, b, c, d, e = coeff
+        print(f"多项式：Q = {a:.6f}·T_env² + {b:.6f}·T_env + {c:.6f}·T_out² + {d:.6f}·T_out + {e:.6f}")
+        print(f"系数：a={a:.6f}, b={b:.6f}, c={c:.6f}, d={d:.6f}, e={e:.6f}")
+    elif n_params == 4:
+        a, b, c, d = coeff
+        print(f"多项式：Q = {a:.6f}·T_env² + {b:.6f}·T_env + {c:.6f}·T_out + {d:.6f}")
+        print(f"系数：a={a:.6f}, b={b:.6f}, c={c:.6f}, d={d:.6f}")
+    elif n_params == 3:
+        a, b, c = coeff
+        print(f"多项式：Q = {a:.6f}·T_env + {b:.6f}·T_out + {c:.6f}")
+        print(f"系数：a={a:.6f}, b={b:.6f}, c={c:.6f}")
 
-
-
-
-
-
+    print("=" * 60)
